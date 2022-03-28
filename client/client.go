@@ -2572,8 +2572,9 @@ func (c *Client) deriveToken(alloc *structs.Allocation, taskNames []string, vcli
 		AllocID:  alloc.ID,
 		Tasks:    verifiedTasks,
 		QueryOptions: structs.QueryOptions{
-			Region:     c.Region(),
-			AllowStale: false,
+			Region:        c.Region(),
+			AllowStale:    false,
+			MinQueryIndex: alloc.ModifyIndex,
 		},
 	}
 
