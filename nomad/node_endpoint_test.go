@@ -3816,9 +3816,8 @@ func TestClientEndpoint_UpdateAlloc_Evals_ByTrigger(t *testing.T) {
 
 			// Fetch the response
 			var nodeResp structs.GenericResponse
-			if err := msgpackrpc.CallWithCodec(codec, "Node.Register", reg, &nodeResp); err != nil {
-				t.Fatalf("err: %v", err)
-			}
+			err := msgpackrpc.CallWithCodec(codec, "Node.Register", reg, &nodeResp)
+			require.NoError(t, err)
 
 			fsmState := s1.fsm.State()
 
@@ -3877,15 +3876,14 @@ func TestClientEndpoint_UpdateAlloc_Evals_ByTrigger(t *testing.T) {
 			require.NoError(t, err)
 			require.NotEqual(t, uint64(0), nodeAllocResp.Index)
 
-			if diff := time.Since(start); diff < batchUpdateInterval {
-				t.Fatalf("too fast: %v", diff)
-			}
+			diff := time.Since(start)
+			require.Less(t, diff, batchUpdateInterval, "too fast") 
 
 			// If no eval should be created validate, none were and return.
 			if tc.triggerBy == "" {
 				evaluations, err := fsmState.EvalsByJob(nil, job.Namespace, job.ID)
 				require.NoError(t, err)
-				require.True(t, len(evaluations) == 0)
+				require.Len(t, evaluations, 0)
 				return
 			}
 
