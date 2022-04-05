@@ -17,6 +17,7 @@ import (
 	vapi "github.com/hashicorp/vault/api"
 
 	"github.com/hashicorp/nomad/acl"
+	"github.com/hashicorp/nomad/helper"
 	"github.com/hashicorp/nomad/helper/uuid"
 	"github.com/hashicorp/nomad/nomad/state"
 	"github.com/hashicorp/nomad/nomad/structs"
@@ -1101,8 +1102,9 @@ func (n *Node) GetClientAllocs(args *structs.NodeSpecificRequest,
 
 // UpdateAlloc is used to update the client status of an allocation
 func (n *Node) UpdateAlloc(args *structs.AllocUpdateRequest, reply *structs.GenericResponse) error {
+	var err error
 	// Ensure the connection was initiated by another client if TLS is used.
-	err := validateTLSCertificateLevel(n.srv, n.ctx, tlsCertificateLevelClient)
+	err = validateTLSCertificateLevel(n.srv, n.ctx, tlsCertificateLevelClient)
 	if err != nil {
 		return err
 	}
@@ -1128,6 +1130,7 @@ func (n *Node) UpdateAlloc(args *structs.AllocUpdateRequest, reply *structs.Gene
 	var evals []*structs.Evaluation
 
 	for _, allocToUpdate := range args.Alloc {
+		evalTriggerBy := ""
 		allocToUpdate.ModifyTime = now.UTC().UnixNano()
 
 		alloc, _ := n.srv.State().AllocByID(nil, allocToUpdate.ID)
@@ -1140,50 +1143,82 @@ func (n *Node) UpdateAlloc(args *structs.AllocUpdateRequest, reply *structs.Gene
 		}
 
 		// if the job has been purged, this will always return error
-		job, err := n.srv.State().JobByID(nil, alloc.Namespace, alloc.JobID)
+		var job *structs.Job
+		var jobType string
+		var jobPriority int
+
+		job, err = n.srv.State().JobByID(nil, alloc.Namespace, alloc.JobID)
 		if err != nil {
 			n.logger.Debug("UpdateAlloc unable to find job", "job", alloc.JobID, "error", err)
-			continue
 		}
+
+		// If the job is nil it means it has been de-registered.
 		if job == nil {
-			n.logger.Debug("UpdateAlloc unable to find job", "job", alloc.JobID)
+			jobType = alloc.Job.Type
+			jobPriority = alloc.Job.Priority
+			evalTriggerBy = structs.EvalTriggerJobDeregister
+			allocToUpdate.DesiredStatus = structs.AllocDesiredStatusStop
+			allocToUpdate.DesiredTransition.NoShutdownDelay = helper.BoolToPtr(true)
+			allocToUpdate.DesiredTransition.Migrate = helper.BoolToPtr(false)
+			n.logger.Debug("UpdateAlloc unable to find job - shutting down alloc", "job", alloc.JobID)
+		}
+
+		var taskGroup *structs.TaskGroup
+		if job != nil {
+			jobType = job.Type
+			jobPriority = job.Priority
+			taskGroup = job.LookupTaskGroup(alloc.TaskGroup)
+		}
+
+		// If we cannot find the task group for a failed alloc we cannot continue, unless it is an orphan.
+		if evalTriggerBy != structs.EvalTriggerJobDeregister &&
+			allocToUpdate.ClientStatus == structs.AllocClientStatusFailed &&
+			alloc.FollowupEvalID == "" &&
+			taskGroup == nil {
+			n.logger.Debug("UpdateAlloc unable to find task group for job", "job", alloc.JobID, "alloc", alloc.ID, "task_group", alloc.TaskGroup)
 			continue
 		}
 
-		taskGroup := job.LookupTaskGroup(alloc.TaskGroup)
-		if taskGroup == nil {
-			continue
-		}
-
-		evalTriggerBy := ""
 		var eval *structs.Evaluation
-		// Add an evaluation if this is a failed alloc that is eligible for rescheduling
-		if allocToUpdate.ClientStatus == structs.AllocClientStatusFailed &&
+		// Add an evaluation if this is a failed alloc that is eligible for rescheduling,
+		// unless it is an orphan.
+		if evalTriggerBy != structs.EvalTriggerJobDeregister &&
+			allocToUpdate.ClientStatus == structs.AllocClientStatusFailed &&
 			alloc.FollowupEvalID == "" &&
 			alloc.RescheduleEligible(taskGroup.ReschedulePolicy, now) {
 
 			evalTriggerBy = structs.EvalTriggerRetryFailedAlloc
 		}
 
-		//Add an evaluation if this is a reconnecting allocation.
-		if alloc.ClientStatus == structs.AllocClientStatusUnknown {
+		// If unknown, and not an orphan, set the trigger by.
+		if evalTriggerBy != structs.EvalTriggerJobDeregister &&
+			alloc.ClientStatus == structs.AllocClientStatusUnknown {
 			evalTriggerBy = structs.EvalTriggerReconnect
+			// If we are reconnecting an alloc that has been drained or purged,
+			// we have to ensure migrate = false.
+			if alloc.DesiredStatus == structs.AllocDesiredStatusStop {
+				allocToUpdate.DesiredTransition.Migrate = helper.BoolToPtr(false)
+			}
 		}
 
-		if evalTriggerBy != "" {
-			eval = &structs.Evaluation{
-				ID:          uuid.Generate(),
-				Namespace:   alloc.Namespace,
-				TriggeredBy: evalTriggerBy,
-				JobID:       alloc.JobID,
-				Type:        job.Type,
-				Priority:    job.Priority,
-				Status:      structs.EvalStatusPending,
-				CreateTime:  now.UTC().UnixNano(),
-				ModifyTime:  now.UTC().UnixNano(),
-			}
-			evals = append(evals, eval)
+		// If we weren't able to determine one of our expected eval triggers,
+		// continue and don't create an eval.
+		if evalTriggerBy == "" {
+			continue
 		}
+
+		eval = &structs.Evaluation{
+			ID:          uuid.Generate(),
+			Namespace:   alloc.Namespace,
+			TriggeredBy: evalTriggerBy,
+			JobID:       alloc.JobID,
+			Type:        jobType,
+			Priority:    jobPriority,
+			Status:      structs.EvalStatusPending,
+			CreateTime:  now.UTC().UnixNano(),
+			ModifyTime:  now.UTC().UnixNano(),
+		}
+		evals = append(evals, eval)
 	}
 
 	// Add this to the batch
@@ -1231,6 +1266,9 @@ func (n *Node) UpdateAlloc(args *structs.AllocUpdateRequest, reply *structs.Gene
 
 // batchUpdate is used to update all the allocations
 func (n *Node) batchUpdate(future *structs.BatchFuture, updates []*structs.Allocation, evals []*structs.Evaluation) {
+	var index uint64
+	var err error
+	var mErr multierror.Error
 	// Group pending evals by jobID to prevent creating unnecessary evals
 	evalsByJobId := make(map[structs.NamespacedID]struct{})
 	var trimmedEvals []*structs.Evaluation
@@ -1247,6 +1285,30 @@ func (n *Node) batchUpdate(future *structs.BatchFuture, updates []*structs.Alloc
 			trimmedEvals = append(trimmedEvals, eval)
 			evalsByJobId[namespacedID] = struct{}{}
 		}
+
+		// Update orphaned allocs so that migrate = false
+		if eval.TriggeredBy == structs.EvalTriggerJobDeregister || eval.TriggeredBy == structs.EvalTriggerReconnect {
+			for _, update := range updates {
+				if update.JobID != eval.JobID {
+					continue
+				}
+				// Don't update the desired transition unless the alloc is reconnecting
+				// after a drain or purge.
+				if eval.TriggeredBy == structs.EvalTriggerReconnect &&
+					update.DesiredStatus != structs.AllocDesiredStatusStop {
+					continue
+				}
+				transitionReq := &structs.AllocUpdateDesiredTransitionRequest{
+					Allocs: map[string]*structs.DesiredTransition{update.ID: &update.DesiredTransition},
+					Evals:  []*structs.Evaluation{eval},
+				}
+				_, index, err = n.srv.raftApply(structs.AllocUpdateDesiredTransitionRequestType, transitionReq)
+				if err != nil {
+					n.logger.Error("alloc update desired transition failed", "eval_id", eval.ID, "alloc_id", update.ID, "error", err)
+					mErr.Errors = append(mErr.Errors, err)
+				}
+			}
+		}
 	}
 
 	if len(trimmedEvals) > 0 {
@@ -1260,8 +1322,7 @@ func (n *Node) batchUpdate(future *structs.BatchFuture, updates []*structs.Alloc
 	}
 
 	// Commit this update via Raft
-	var mErr multierror.Error
-	_, index, err := n.srv.raftApply(structs.AllocClientUpdateRequestType, batch)
+	_, index, err = n.srv.raftApply(structs.AllocClientUpdateRequestType, batch)
 	if err != nil {
 		n.logger.Error("alloc update failed", "error", err)
 		mErr.Errors = append(mErr.Errors, err)
