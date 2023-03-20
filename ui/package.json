@@ -99,7 +99,7 @@
     "ember-load-initializers": "^2.1.2",
     "ember-maybe-import-regenerator": "^1.0.0",
     "ember-modifier": "3.2.7",
-    "ember-moment": "^9.0.1",
+    "ember-moment": "^10.0.0",
     "ember-named-blocks-polyfill": "^0.2.4",
     "ember-on-resize-modifier": "^1.0.0",
     "ember-overridable-computed": "^1.0.0",
