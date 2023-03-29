@@ -98,7 +98,7 @@ require (
 	github.com/moby/sys/mount v0.3.3
 	github.com/moby/sys/mountinfo v0.6.2
 	github.com/moby/term v0.0.0-20210619224110-3f7ff695adc6
-	github.com/opencontainers/runc v1.1.4
+	github.com/opencontainers/runc v1.1.5
 	github.com/opencontainers/runtime-spec v1.0.3-0.20210326190908-1c3f411f0417
 	github.com/posener/complete v1.2.3
 	github.com/prometheus/client_golang v1.14.0
@@ -108,7 +108,7 @@ require (
 	github.com/ryanuber/go-glob v1.0.0
 	github.com/shirou/gopsutil/v3 v3.23.1
 	github.com/shoenig/go-landlock v0.1.5
-	github.com/shoenig/test v0.6.2
+	github.com/shoenig/test v0.6.3
 	github.com/skratchdot/open-golang v0.0.0-20160302144031-75fb7ed4208c
 	github.com/stretchr/testify v1.8.1
 	github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635
