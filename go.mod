@@ -40,8 +40,8 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/hashicorp/cap v0.2.0
 	github.com/hashicorp/consul-template v0.30.0
-	github.com/hashicorp/consul/api v1.18.0
-	github.com/hashicorp/consul/sdk v0.13.0
+	github.com/hashicorp/consul/api v1.20.0
+	github.com/hashicorp/consul/sdk v0.13.1
 	github.com/hashicorp/cronexpr v1.1.1
 	github.com/hashicorp/go-bexpr v0.1.11
 	github.com/hashicorp/go-checkpoint v0.0.0-20171009173528-1545e56e46de
