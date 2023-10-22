@@ -16,7 +16,7 @@ replace github.com/hashicorp/nomad/api => ./api
 require (
 	github.com/LK4D4/joincontext v0.0.0-20171026170139-1724345da6d5
 	github.com/Masterminds/sprig/v3 v3.2.3
-	github.com/Microsoft/go-winio v0.6.0
+	github.com/Microsoft/go-winio v0.6.1
 	github.com/armon/circbuf v0.0.0-20150827004946-bbbad097214e
 	github.com/armon/go-metrics v0.4.1
 	github.com/aws/aws-sdk-go v1.44.184
@@ -29,12 +29,12 @@ require (
 	github.com/creack/pty v1.1.18
 	github.com/docker/cli v24.0.6+incompatible
 	github.com/docker/distribution v2.8.3+incompatible
-	github.com/docker/docker v23.0.3+incompatible
+	github.com/docker/docker v24.0.6+incompatible
 	github.com/docker/go-units v0.5.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/elazarl/go-bindata-assetfs v1.0.1
 	github.com/fatih/color v1.15.0
-	github.com/fsouza/go-dockerclient v1.7.9
+	github.com/fsouza/go-dockerclient v1.10.0
 	github.com/go-jose/go-jose/v3 v3.0.0
 	github.com/golang-jwt/jwt/v5 v5.0.0
 	github.com/golang/protobuf v1.5.3
@@ -231,7 +231,7 @@ require (
 	github.com/mattn/go-runewidth v0.0.12 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
-	github.com/moby/patternmatcher v0.5.0 // indirect
+	github.com/moby/patternmatcher v0.6.0 // indirect
 	github.com/moby/sys/sequential v0.5.0 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/mrunalp/fileutils v0.5.0 // indirect
